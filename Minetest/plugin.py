@@ -13,7 +13,7 @@ class Minetest(callbacks.Plugin):
 	"""Adds some Minetest-related commands
 	"""
 
-	thteaded = True
+	threaded = True
 
 	def up(self, irc, msg, args, address, portlist):
 		"""address [ports]
