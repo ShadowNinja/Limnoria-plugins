@@ -29,19 +29,18 @@ class Minetest(callbacks.Plugin):
 		if ports == None:
 			return
 
-		if len(ports) != 1 and irc.isChannel(msg.args[0]):
-			irc.reply("To check multiple ports please use query")
-			return
 		if len(ports) > 6:
 			irc.error("Too many Ports specified")
 			return
 
+		results = []
 		for port in ports:
-			message = self.ServerUp(address, port)
-			if message:
-				irc.reply(message)
-			else:
-				irc.reply("Error: Maybe you typed the address wrong?")
+			up = self.ServerUp(address, port)
+			if up is None:
+				results.append("Error. Invalid address?")
+			results.append("port " + str(port) + " is "
+					+ (up and ("up (%dms)" % up) or "down"))
+		irc.reply(address + " " + (" | ".join(results)))
 	up = wrap(up, ['somethingWithoutSpaces', optional('somethingWithoutSpaces')])
 
 
@@ -162,17 +161,16 @@ class Minetest(callbacks.Plugin):
 			buf = b'\x4f\x45\x74\x03\x00\x00\x00\x01'
 			sock.sendto(buf, (address, port))
 			data, addr = sock.recvfrom(1000)
-			if data:
-				peer_id = data[12:14]
-				buf = b'\x4f\x45\x74\x03' + peer_id + b'\x00\x00\x03'
-				sock.sendto(buf, (address, port))
-				sock.close()
-				end = time.time()
-				return "%s is up (%dms)" % (repres,int((end-start)*1000))
-			else:
-				return "%s seems to be down " % repres
+			if not data:
+				return False
+			peer_id = data[12:14]
+			buf = b'\x4f\x45\x74\x03' + peer_id + b'\x00\x00\x03'
+			sock.sendto(buf, (address, port))
+			sock.close()
+			end = time.time()
+			return int((end - start) * 1000)
 		except socket.timeout:
-			return "%s seems to be down " % repres
+			return False
 		except:
 			return None
 
