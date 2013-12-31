@@ -3,6 +3,8 @@ import socket
 import time
 import math
 import random
+import threading
+from queue import Queue
 import supybot.callbacks as callbacks
 from supybot.commands import *
 import supybot.ircdb as ircdb
@@ -29,17 +31,27 @@ class Minetest(callbacks.Plugin):
 		if ports == None:
 			return
 
-		if len(ports) > 6:
+		if len(ports) > 15:
 			irc.error("Too many Ports specified")
 			return
 
+		resultQueue = Queue()
 		results = []
+		threads = []
 		for port in ports:
-			up = self.ServerUp(address, port)
-			if up is None:
+			th = threading.Thread(name="ParallelServerUpThread-" + str(port),
+					target=self.parallelServerUp,
+					args=(resultQueue, address, port))
+			th.start()
+			threads.append(th)
+		for th in threads:
+			th.join()  # Wait for all threads to finish
+		for i in range(0, resultQueue.qsize()):
+			info = resultQueue.get_nowait()
+			if info[1] is None:
 				results.append("Error. Invalid address?")
-			results.append("port " + str(port) + " is "
-					+ (up and ("up (%dms)" % up) or "down"))
+			results.append("port " + str(info[0]) + " is "
+					+ (info[1] and ("up (%dms)" % info[1]) or "down"))
 		irc.reply(address + " " + (" | ".join(results)))
 	up = wrap(up, ['somethingWithoutSpaces', optional('somethingWithoutSpaces')])
 
@@ -152,7 +164,10 @@ class Minetest(callbacks.Plugin):
 		"port":    lambda self, server_list, arg: self.filterServersByNum(server_list, arg, "port", int)
 	}
 
-	def ServerUp(self, address, port):
+	def parallelServerUp(self, queue, address, port):
+		queue.put([port, self.serverUp(address, port)])
+
+	def serverUp(self, address, port):
 		repres = address + ':' + str(port)
 		try:
 			start = time.time()
