@@ -50,6 +50,7 @@ class Minetest(callbacks.Plugin):
 			info = resultQueue.get_nowait()
 			if info[1] is None:
 				results.append("Error. Invalid address?")
+				break
 			results.append("port " + str(info[0]) + " is "
 					+ (info[1] and ("up (%dms)" % info[1]) or "down"))
 		irc.reply(address + " " + (" | ".join(results)))
