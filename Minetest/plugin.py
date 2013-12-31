@@ -19,22 +19,10 @@ class Minetest(callbacks.Plugin):
 		"""address [ports]
 
 		Checks if a Minetest server is up.
-		Ports can be in the format port1,port2,port3-port5."""
-		if address == None:
-			irc.error("Give me a Server Address")
-			return
-		if not '.' in address:
-			irc.error("Invalid Address")
-			return
+		Ports can be in the format port1,port2,port3-port5.
+		"""
 
-		if ':' in address:
-			try:
-				ports = [int(address.split(":")[1])]
-			except ValueError: #The string couldn't be converted to an int
-				irc.reply("Invalid usage, see help Minetest up")
-				return
-			address = address.split(":")[0]
-		elif portlist is None:
+		if portlist is None:
 			ports = [30000]
 		else:
 			ports = self.getPorts(portlist, irc)
@@ -42,7 +30,7 @@ class Minetest(callbacks.Plugin):
 			return
 
 		if len(ports) != 1 and irc.isChannel(msg.args[0]):
-			irc.reply("To check multiple Ports please use Query")
+			irc.reply("To check multiple ports please use query")
 			return
 		if len(ports) > 6:
 			irc.error("Too many Ports specified")
@@ -54,7 +42,7 @@ class Minetest(callbacks.Plugin):
 				irc.reply(message)
 			else:
 				irc.reply("Error: Maybe you typed the address wrong?")
-	up = wrap(up, ['something', optional('something')])
+	up = wrap(up, ['somethingWithoutSpaces', optional('somethingWithoutSpaces')])
 
 
 
