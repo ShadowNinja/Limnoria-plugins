@@ -8,56 +8,6 @@ from supybot.commands import *
 import supybot.ircdb as ircdb
 import supybot.utils as utils
 
-def filterServersByName(server_list, arg, field):
-	result = []
-	for i in range(len(server_list)):
-		if arg.lower().strip()\
-		   in server_list[i][field].lower().strip():
-			result.append(server_list[i])
-	return result
-
-def filterServersByNum(server_list, arg, field, typeconv):
-	result = []
-	if arg.startswith("<"): # less comparing
-		try: num = typeconv(arg[1:])
-		except: return
-		for i in range(0, len(server_list)):
-			if typeconv(server_list[i][field]) < num:
-				result.append(server_list[i])
-	elif arg.startswith(">"): # more comparing
-		try: num = typeconv(arg[1:])
-		except: return
-		for i in range(0, len(server_list)):
-			if typeconv(server_list[i][field]) > num:
-				result.append(server_list[i])
-	elif arg.startswith("!"): # NOT
-		try: num = typeconv(arg[1:])
-		except: return
-		for i in range(0, len(server_list)):
-			if typeconv(server_list[i][field]) != num:
-				result.append(server_list[i])
-	elif arg == "highest":
-		highest = [0, 0]
-		for i in range(0, len(server_list)):
-			if typeconv(server_list[i][field]) > highest[0]:
-				highest[0] = typeconv(server_list[i][field])
-				highest[1] = i
-		result = [server_list[highest[1]]]
-	elif arg == "lowest":
-		lowest = [None, 0]
-		for i in range(0, len(server_list)):
-			if lowest[0] is None or\
-			   typeconv(server_list[i][field]) < lowest[0]:
-				lowest[0] = typeconv(server_list[i][field])
-				lowest[1] = i
-		result = [server_list[lowest[1]]]
-	else:
-		try: num = typeconv(arg)
-		except: return server_list
-		for i in range(len(server_list)):
-			if typeconv(server_list[i][field]) == num:
-				result.append(server_list[i])
-	return result
 
 class Minetest(callbacks.Plugin):
 	"""Adds some Minetest-related commands
@@ -120,7 +70,7 @@ class Minetest(callbacks.Plugin):
 		for option in options:
 			if len(server_list) > 0:
 				server_list = self.serverSearchFilters[option[0]]\
-					(self.serverSearchFilters, server_list, option[1])
+						(self, server_list, option[1])
 
 		if len(server_list) == 0:
 			irc.reply("No results.")
@@ -150,21 +100,69 @@ class Minetest(callbacks.Plugin):
 			"port":    "something"
 		})])
 
-	#--Helpers--#
+
+	# Helpers
+
+	def filterServersByName(self, server_list, arg, field):
+		result = []
+		for i in range(len(server_list)):
+			if arg.lower().strip()\
+			   in server_list[i][field].lower().strip():
+				result.append(server_list[i])
+		return result
+
+	def filterServersByNum(self, server_list, arg, field, typeconv):
+		result = []
+		if arg.startswith("<"): # less comparing
+			try: num = typeconv(arg[1:])
+			except: return
+			for i in range(0, len(server_list)):
+				if typeconv(server_list[i][field]) < num:
+					result.append(server_list[i])
+		elif arg.startswith(">"): # more comparing
+			try: num = typeconv(arg[1:])
+			except: return
+			for i in range(0, len(server_list)):
+				if typeconv(server_list[i][field]) > num:
+					result.append(server_list[i])
+		elif arg.startswith("!"): # NOT
+			try: num = typeconv(arg[1:])
+			except: return
+			for i in range(0, len(server_list)):
+				if typeconv(server_list[i][field]) != num:
+					result.append(server_list[i])
+		elif arg == "highest":
+			highest = [0, 0]
+			for i in range(0, len(server_list)):
+				if typeconv(server_list[i][field]) > highest[0]:
+					highest[0] = typeconv(server_list[i][field])
+					highest[1] = i
+			result = [server_list[highest[1]]]
+		elif arg == "lowest":
+			lowest = [None, 0]
+			for i in range(0, len(server_list)):
+				if lowest[0] is None or\
+				   typeconv(server_list[i][field]) < lowest[0]:
+					lowest[0] = typeconv(server_list[i][field])
+					lowest[1] = i
+			result = [server_list[lowest[1]]]
+		else:
+			try: num = typeconv(arg)
+			except: return server_list
+			for i in range(len(server_list)):
+				if typeconv(server_list[i][field]) == num:
+					result.append(server_list[i])
+		return result
 
 	serverSearchFilters = {
-		"address": lambda filters, server_list, arg: filters["byName"](server_list, arg, "address"),
-		"name":    lambda filters, server_list, arg: filters["byName"](server_list, arg, "name"),
-		"version": lambda filters, server_list, arg: filters["byName"](server_list, arg, "version"),
-		"game":    lambda filters, server_list, arg: filters["byName"](server_list, arg, "gameid"),
+		"address": lambda self, server_list, arg: self.filterServersByName(server_list, arg, "address"),
+		"name":    lambda self, server_list, arg: self.filterServersByName(server_list, arg, "name"),
+		"version": lambda self, server_list, arg: self.filterServersByName(server_list, arg, "version"),
+		"game":    lambda self, server_list, arg: self.filterServersByName(server_list, arg, "gameid"),
 
-		"players": lambda filters, server_list, arg: filters["byNum"](server_list, arg, "clients", int),
-		"ping":    lambda filters, server_list, arg: filters["byNum"](server_list, arg, "ping", float),
-		"port":    lambda filters, server_list, arg: filters["byNum"](server_list, arg, "port", int),
-
-		"byName": filterServersByName,
-		"byNum" : filterServersByNum
-
+		"players": lambda self, server_list, arg: self.filterServersByNum(server_list, arg, "clients", int),
+		"ping":    lambda self, server_list, arg: self.filterServersByNum(server_list, arg, "ping", float),
+		"port":    lambda self, server_list, arg: self.filterServersByNum(server_list, arg, "port", int)
 	}
 
 	def ServerUp(self, address, port):
