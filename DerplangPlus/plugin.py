@@ -18,7 +18,7 @@ class DerplangPlus(callbacks.Plugin):
 	"""
 	threaded = True
 	def derplangplus(self, irc, msg, args, code):
-		"""derplangplus <code>
+		"""<code>
 
 		Runs Derplang+ code"""
 		(PPipe, CPipe) = multiprocessing.Pipe()
