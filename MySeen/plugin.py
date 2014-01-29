@@ -14,6 +14,18 @@ filename = conf.supybot.directories.data.dirize('Seen.sqlite')
 
 Base = sqlalchemy.ext.declarative.declarative_base()
 
+class Network(Base):
+	__tablename__ = "networks"
+
+	id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+	name = sqlalchemy.Column(sqlalchemy.String)
+
+class Channel(Base):
+	__tablename__ = "channels"
+
+	id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+	name = sqlalchemy.Column(sqlalchemy.String)
+
 class Entry(Base):
 	__tablename__ = "seen"
 
@@ -38,18 +50,6 @@ class Entry(Base):
 
 	def __init__(self, networkid, channelid, nick, message):
 		return self.update(networkid, channelid, nick, message)
-
-class Network(Base):
-	__tablename__ = "networks"
-
-	id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-	name = sqlalchemy.Column(sqlalchemy.String)
-
-class Channel(Base):
-	__tablename__ = "channels"
-
-	id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
-	name = sqlalchemy.Column(sqlalchemy.String)
 
 
 class MySeen(callbacks.Plugin):
