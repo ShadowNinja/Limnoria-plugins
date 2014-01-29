@@ -59,9 +59,6 @@ class MySeen(callbacks.Plugin):
 
 	noIgnore = True
 
-	networks = []
-	channels = []
-
 	def __init__(self, irc):
 		self.__parent = super(MySeen, self)
 		self.__parent.__init__(irc)
@@ -93,8 +90,10 @@ class MySeen(callbacks.Plugin):
 
 	def Get(self, network, nick):
 		try:
-			return self.session.query(Entry).filter(
-					Entry.networkid == self.getNetworkIdNoCreate(network),
+			return self.session.query(Entry)\
+				.join(Entry.network)\
+				.filter(
+					Network.name == network,
 					Entry.nick == nick.lower()
 				).order_by(Entry.timestamp.desc()).first()
 		except sqlalchemy.orm.exc.NoResultFound:
@@ -102,9 +101,12 @@ class MySeen(callbacks.Plugin):
 
 	def getChan(self, network, channel, nick):
 		try:
-			return self.session.query(Entry).filter(
-					Entry.networkid == self.getNetworkIdNoCreate(network),
-					Entry.channelid == self.getChannelIdNoCreate(channel),
+			return self.session.query(Entry)\
+				.join(Entry.network)\
+				.join(Entry.channel)\
+				.filter(
+					Network.name == network,
+					Channel.name == channel,
 					Entry.nick == nick.lower()
 				).one()
 		except sqlalchemy.orm.exc.NoResultFound:
@@ -129,14 +131,6 @@ class MySeen(callbacks.Plugin):
 			self.session.add(chan)
 			self.session.commit()
 			return chan.id
-
-	def getNetworkIdNoCreate(self, network):
-		net = self.session.query(Network).filter_by(name=network).one()
-		return net.id
-
-	def getChannelIdNoCreate(self, channel):
-		chan = self.session.query(Channel).filter_by(name=channel).one()
-		return chan.id
 
 	def doPrivmsg(self, irc, msg): self.Add(irc, msg)
 	def doNotice (self, irc, msg): self.Add(irc, msg)
