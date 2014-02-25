@@ -87,12 +87,23 @@ class FloodProtector(callbacks.Plugin):
 			self.floodPunish(irc, msg, "Paste", dummy = False)
 			return
 
+		# Slap flood
+		isSlap = lambda x: ircmsgs.isAction(x) and x.args[1][8:13] == "slaps"
+		if len(recentMessages) > 3 and\
+		   isSlap(recentMessages[-1]) and\
+		   isSlap(recentMessages[-2]) and\
+		   isSlap(recentMessages[-3]) and\
+		   (recentMessages[-1].receivedAt - recentMessages[-3].receivedAt) < 30:
+			self.floodPunish(irc, msg, "Slap")
+			return
+
 		# Mass highlight
 		if irc.network in self.regexs and\
 		   channel in self.regexs[irc.network]:
 			matches = self.regexs[irc.network][channel].findall(message)
 			if len(matches) > 10:
 				self.floodPunish(irc, msg, "Highlight")
+				return
 
 		# CAPS FLOOD
 		#def tooManyCaps(s):
@@ -107,6 +118,7 @@ class FloodProtector(callbacks.Plugin):
 		#	   tooManyCaps(recentMessages[-2].args[1]) and\
 		#	   tooManyCaps(recentMessages[-3].args[1]):
 		#		self.floodPunish(irc, msg, "CAPS", dummy = True)
+		#		return
 
 	def floodPunish(self, irc, msg, floodType, dummy = False):
 		channel = msg.args[0]
