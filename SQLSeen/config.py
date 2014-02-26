@@ -7,10 +7,10 @@ def configure(advanced):
 	# user or not.  You should effect your configuration by manipulating the
 	# registry as appropriate.
 	from supybot.questions import expect, anything, something, yn
-	conf.registerPlugin('MySeen', True)
+	conf.registerPlugin('SQLSeen', True)
 
 
-MySeen = conf.registerPlugin('MySeen')
+SQLSeen = conf.registerPlugin('SQLSeen')
 # This is where your configuration variables (if any) should go.  For example:
 # conf.registerGlobalValue(Admin, 'someConfigVariableName',
 #     registry.Boolean(False, """Help for someConfigVariableName."""))

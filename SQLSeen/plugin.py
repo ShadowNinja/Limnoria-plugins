@@ -52,7 +52,7 @@ class Entry(Base):
 		return self.update(networkid, channelid, nick, message)
 
 
-class MySeen(callbacks.Plugin):
+class SQLSeen(callbacks.Plugin):
 	"""
 	Records the last time a nick is seen
 	"""
@@ -60,7 +60,7 @@ class MySeen(callbacks.Plugin):
 	noIgnore = True
 
 	def __init__(self, irc):
-		self.__parent = super(MySeen, self)
+		self.__parent = super(SQLSeen, self)
 		self.__parent.__init__(irc)
 		self.engine = sqlalchemy.create_engine("sqlite:///" + filename)
 		sessionmaker = sqlalchemy.orm.sessionmaker()
@@ -154,5 +154,5 @@ class MySeen(callbacks.Plugin):
 
 		self.session.commit()
 
-Class = MySeen
+Class = SQLSeen
 
