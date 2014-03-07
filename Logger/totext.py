@@ -19,7 +19,7 @@ msgstrs = [
 	"--> {nick} has joined",
 	"<-- {nick} has parted ({message})",
 	"<-- {nick} has quit ({message})",
-	"*** {nick} has been kicked {message}",
+	"*** {nick} has kicked {message}",
 	"<-> {nick} is now known as {message}",
 	"*** Mode [{message}] by {nick}",
 	"*** Topic set by {nick} to {message}"

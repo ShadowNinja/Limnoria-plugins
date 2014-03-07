@@ -78,6 +78,9 @@ class Logger(callbacks.Plugin):
 
 		if msgtype == MessageType.mode:
 			text = " ".join(msg.args[1:])
+		elif msgtype == MessageType.kick:
+			# Add reason to text
+			text += " " + msg.args[2]
 		elif ircmsgs.isAction(msg):
 			msgtype = MessageType.action
 			text = msg.args[1][8:-1]
