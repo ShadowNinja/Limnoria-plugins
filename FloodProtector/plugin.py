@@ -130,14 +130,14 @@ class FloodProtector(callbacks.Plugin):
 			return
 
 		if msg.nick in self.immunities:
-			self.log.warning("Not punnishing %s, they are immune.",
+			self.log.debug("Not punnishing %s, they are immune.",
 				msg.nick)
 			return
 
 		if msg.nick in irc.state.channels[channel].ops or\
 		   msg.nick in irc.state.channels[channel].halfops or\
 		   msg.nick in irc.state.channels[channel].voices:
-			self.log.warning("%s flooded in %s. But"\
+			self.log.debug("%s flooded in %s. But"\
 				+ " I will not punish them because they have"\
 				+ " special access.", msg.nick, channel)
 			return
@@ -145,7 +145,7 @@ class FloodProtector(callbacks.Plugin):
 		if ircdb.checkCapability(msg.prefix, 'trusted') or\
 		   ircdb.checkCapability(msg.prefix, 'admin') or\
 		   ircdb.checkCapability(msg.prefix, channel + ',op'):
-			self.log.warning("%s flooded in %s. But"\
+			self.log.debug("%s flooded in %s. But"\
 				+ " I will not punish them because they are"\
 				+ " trusted.", msg.nick, channel)
 			return
