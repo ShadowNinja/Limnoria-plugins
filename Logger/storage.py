@@ -51,6 +51,7 @@ class LogDB:
 				FOREIGN KEY(bufferid) REFERENCES buffer (id), 
 				FOREIGN KEY(senderid) REFERENCES sender (id)
 			);
+			CREATE INDEX IF NOT EXISTS logBufferTimestamp ON log(bufferid, timestamp);
 		""")
 
 		self.lock = RLock()
