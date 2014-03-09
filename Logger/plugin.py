@@ -103,6 +103,8 @@ class Logger(callbacks.Plugin):
 		newNick = msg.args[0]
 		for (channel, chan) in irc.state.channels.items():
 			if newNick in chan.users:
+				if not self.registryValue("enable", channel):
+					continue
 				self.db.add(MessageType.nick,
 					irc.network,
 					channel,
@@ -120,6 +122,8 @@ class Logger(callbacks.Plugin):
 			irc = irc.getRealIrc()
 		for (channel, chan) in self.lastStates[irc].channels.items():
 			if msg.nick in chan.users:
+				if not self.registryValue("enable", channel):
+					continue
 				self.db.add(MessageType.quit,
 					irc.network,
 					channel,
