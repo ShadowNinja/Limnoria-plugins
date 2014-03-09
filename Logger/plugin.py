@@ -127,5 +127,12 @@ class Logger(callbacks.Plugin):
 					reason)
 		self.db.commit()
 
+	def outFilter(self, irc, msg):
+		# Log our own messages
+		if msg.command in ('PRIVMSG', 'NOTICE'):
+			# Other messages should be sent back to us.
+			self(irc, ircmsgs.IrcMsg(msg=msg, prefix=irc.prefix))
+		return msg
+
 Class = Logger
 
