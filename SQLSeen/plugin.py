@@ -38,9 +38,6 @@ class Entry(Base):
 	nick = sqlalchemy.Column(sqlalchemy.String, nullable=False)
 	message = sqlalchemy.Column(sqlalchemy.String)
 
-	network = sqlalchemy.orm.relationship("Network")
-	channel = sqlalchemy.orm.relationship("Channel")
-
 	def update(self, networkid, channelid, nick, message):
 		self.networkid = networkid
 		self.channelid = channelid
@@ -50,6 +47,9 @@ class Entry(Base):
 
 	def __init__(self, networkid, channelid, nick, message):
 		return self.update(networkid, channelid, nick, message)
+
+Entry.network = sqlalchemy.orm.relationship("Network")
+Entry.channel = sqlalchemy.orm.relationship("Channel")
 
 
 class SQLSeen(callbacks.Plugin):
