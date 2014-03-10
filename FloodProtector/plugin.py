@@ -150,7 +150,7 @@ class FloodProtector(callbacks.Plugin):
 				+ " trusted.", msg.nick, channel)
 			return
 
-		if msg.nick in self.offenses and self.offenses[msg.nick] > 2:
+		if msg.host in self.offenses and self.offenses[msg.host] > 2:
 			hostmask = irc.state.nickToHostmask(msg.nick)
 			banmaskstyle = conf.supybot.protocols.irc.banmask
 			banmask = banmaskstyle.makeBanmask(hostmask)
@@ -170,23 +170,23 @@ class FloodProtector(callbacks.Plugin):
 				msg.nick, channel, floodType)
 
 		# Don't schedule the same nick twice
-		if not (msg.nick in self.offenses):
+		if not (msg.host in self.offenses):
 			schedule.addEvent(self.clearOffenses, time.time()+300,
-					args=[msg.nick])
-			self.offenses[msg.nick] = 0 # Incremented below
-		self.offenses[msg.nick] += 1
+					args=[msg.host])
+			self.offenses[msg.host] = 0 # Incremented below
+		self.offenses[msg.host] += 1
 
 		self.immunities[msg.nick] = True
 		schedule.addEvent(self.unImmunify, time.time()+3,
 				args=[msg.nick])
 
-	def clearOffenses(self, nick):
-		if self.offenses[nick] > 1:
-			self.offenses[nick] -= 1
+	def clearOffenses(self, host):
+		if self.offenses[host] > 1:
+			self.offenses[host] -= 1
 			schedule.addEvent(self.clearOffenses, time.time()+300,
-					args=[nick])
+					args=[host])
 		else:
-			del self.offenses[nick]
+			del self.offenses[host]
 
 	def unImmunify(self, nick):
 		del self.immunities[nick]
