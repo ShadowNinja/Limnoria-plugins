@@ -22,30 +22,46 @@ class FloodProtector(callbacks.Plugin):
 	immunities = {}
 	repetitionRegex = re.compile(r"(.+?)\1+")
 
+
 	def inFilter(self, irc, msg):
-		# We need to check for floods here rather than in doPrivmsg because
-		# messages don't get to doPrivmsg if the user is ignored.
-		if msg.command in ["PRIVMSG", "NOTICE"]:
+		if msg.command in ("PRIVMSG", "NOTICE", "JOIN", "PART", "QUIT"):
 			channel = msg.args[0]
-			if ircutils.isChannel(channel):
-				self.checkFlood(irc, msg)
+			if ircutils.isChannel(channel) and\
+			   self.registryValue("enabled", channel):
+				if msg.command in ("PRIVMSG", "NOTICE"):
+					self.checkMessageFlood(irc, msg)
+				elif msg.command in ("JOIN", "PART", "QUIT"):
+					self.checkJoinFlood(irc, msg)
 		return msg
 
-	def checkFlood(self, irc, msg):
+
+	def generateRecent(self, irc, msg, commands, maxNeeded = 5):
+		recent = []
+		# Sorted in order of arival
+		for item in reversed(irc.state.history):
+			if item.command in commands and\
+			   item.nick == msg.nick and\
+			   item.args[0] == msg.args[0]:
+				recent.insert(0, item)
+				if len(recent) >= maxNeeded:
+					break
+		return recent
+
+
+	def checkJoinFlood(self, irc, msg):
+		channel = msg.args[0]
+		recentJoins = self.generateRecent(irc, msg, ("JOIN", "PART", "QUIT"), 6)
+
+		# Flaping connection
+		if len(recentJoins) >= 6 and\
+		   recentJoins[-1].receivedAt - recentJoins[-6].receivedAt < 240:
+			self.banForward(irc, msg, "#fix_your_connection")
+
+
+	def checkMessageFlood(self, irc, msg):
 		channel = msg.args[0]
 		message = ircutils.stripFormatting(msg.args[1])
-		recentMessages = []
-
-		if not self.registryValue("enabled", channel):
-			return
-
-		# Generate recentMessages, sorted in order of arival
-		for item in reversed(irc.state.history):
-			if len(recentMessages) >= 5: break
-			if item.command in ["PRIVMSG", "NOTICE"] and\
-			   item.nick == msg.nick and\
-			   item.args[0] == channel:
-				recentMessages.insert(0, item)
+		recentMessages = self.generateRecent(irc, msg, ("PRIVMSG", "NOTICE"))
 
 		# Regular message flood
 		if len(recentMessages) >= 5:
@@ -119,6 +135,16 @@ class FloodProtector(callbacks.Plugin):
 		#	   tooManyCaps(recentMessages[-3].args[1]):
 		#		self.floodPunish(irc, msg, "CAPS", dummy = True)
 		#		return
+
+
+	def banForward(self, irc, msg, channel):
+		hostmask = irc.state.nickToHostmask(msg.nick)
+		banmaskstyle = conf.supybot.protocols.irc.banmask
+		banmask = banmaskstyle.makeBanmask(hostmask)
+		irc.queueMsg(ircmsgs.mode(msg.args[0], ("+b", banmask + "$" + channel)))
+		self.log.warning("Ban-forwarded %s (%s) from %s to %s.",
+				banmask, msg.nick, msg.args[0], channel)
+
 
 	def floodPunish(self, irc, msg, floodType, dummy = False):
 		channel = msg.args[0]
