@@ -30,6 +30,63 @@ class Logger(callbacks.Plugin):
 		self.db = LogDB(filename)
 		world.flushers.append(self.flush)
 
+	def _seen(self, irc, msg, channel, nick, findAny):
+		if nick == irc.nick:
+			irc.reply("Of course I've seen myself!")
+			return
+		bufid = self.db.getBuffer(irc.network, channel)["id"]
+		if findAny:
+			entry = self.db.getLast(bufid, nick)
+		else:
+			entry = self.db.getLastMessage(bufid, nick)
+		if not entry:
+			irc.reply("I haven't seen %s in %s." % (nick, channel))
+			return
+		t = time.time()
+		rpl = "I saw %s in %s %s ago" % (
+			nick,
+			channel,
+			utils.timeElapsed(t - entry["timestamp"])
+		)
+		tp = entry["type"]
+		if tp == MessageType.privmsg or\
+		   tp == MessageType.notice or\
+		   tp == MessageType.action:
+			rpl += " saying \"%s\"" % (entry["message"],)
+		elif tp == MessageType.join:
+			rpl += " joining."
+		elif tp == MessageType.part:
+			rpl += " parting (%s)" % (entry["message"],)
+		elif tp == MessageType.quit:
+			rpl += " quiting (%s)" % (entry["message"],)
+		elif tp == MessageType.kick:
+			rpl += " kicking %s (%s)" % (
+					entry["message"].split(' ')[0],
+					entry["message"].split(' ')[1:])
+		elif tp == MessageType.nick:
+			rpl += " changing nick to %s" % (entry["message"],)
+		elif tp == MessageType.mode:
+			rpl += " setting mode %s" % (entry["message"],)
+		elif tp == MessageType.topic:
+			rpl += " setting the topic to \"%s\"" % (entry["message"],)
+		irc.reply(rpl)
+
+	def seen(self, irc, msg, args, channel, nick):
+		"""[channel] <nick>
+
+		Finds the last time a nick was seen speaking and what they said.
+		"""
+		self._seen(irc, msg, channel, nick, False)
+	seen = wrap(seen, ["channel", "nick"])
+
+	def seenany(self, irc, msg, args, channel, nick):
+		"""[channel] <nick>
+
+		Finds the last time a nick was seen and what they were doing.
+		"""
+		self._seen(irc, msg, channel, nick, True)
+	seenany = wrap(seenany, ["channel", "nick"])
+
 	def __call__(self, irc, msg):
 		try:
 			self.__parent.__call__(irc, msg)

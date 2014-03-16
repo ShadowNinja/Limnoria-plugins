@@ -171,3 +171,28 @@ class LogDB:
 					ORDER BY id ASC
 				""").fetchall()
 
+	def getLast(self, bufid, nick):
+		with self.lock:
+			return self.cur.execute("""
+					SELECT * FROM log
+					INNER JOIN sender ON sender.id=log.senderid
+					WHERE
+						log.bufferid = ? AND
+						sender.nick = ?
+					ORDER BY id DESC
+					LIMIT 1
+				""", (bufid, nick)).fetchone()
+
+	def getLastMessage(self, bufid, nick):
+		with self.lock:
+			return self.cur.execute("""
+					SELECT * FROM log
+					INNER JOIN sender ON sender.id=log.senderid
+					WHERE
+						log.bufferid = ? AND
+						log.type BETWEEN 0 AND 2 AND
+						sender.nick = ?
+					ORDER BY id DESC
+					LIMIT 1
+				""", (bufid, nick)).fetchone()
+
