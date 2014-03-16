@@ -75,6 +75,9 @@ class SQLSeen(callbacks.Plugin):
 
 		Finds the last time a nick was seen and what they said.
 		"""
+		if nick == irc.nick:
+			irc.reply("Of course I've seen myself!")
+			return
 		entry = self.getChan(irc.network, channel, nick)
 		if not entry:
 			irc.reply("I haven't seen %s in %s." % (nick, channel))
