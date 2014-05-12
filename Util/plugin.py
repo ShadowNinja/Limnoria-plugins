@@ -15,7 +15,7 @@ class Util(callbacks.Plugin):
 		if pos >= 0:
 			irc.reply(s[0:pos])
 		else:
-			irc.error("Delemiter not found.")
+			irc.error("Delemiter not found in \"%s\"" % s)
 	stripto = wrap(stripto, ["something", "text"])
 
 Class = Util
