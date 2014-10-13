@@ -20,39 +20,39 @@ class LogDB:
 		self.conn = sqlite3.connect(filename, 5, 0, None, False)
 		self.conn.row_factory = sqlite3.Row
 		self.cur = self.conn.cursor()
-		self.cur.executescript("""
-			CREATE TABLE IF NOT EXISTS sender (
-				id INTEGER NOT NULL, 
-				nick VARCHAR, 
-				user VARCHAR, 
-				host VARCHAR, 
-				PRIMARY KEY (id)
-			);
-			CREATE TABLE IF NOT EXISTS network (
-				id INTEGER NOT NULL, 
-				name VARCHAR, 
-				PRIMARY KEY (id)
-			);
-			CREATE TABLE IF NOT EXISTS buffer (
-				id INTEGER NOT NULL, 
-				networkid INTEGER NOT NULL, 
-				name VARCHAR, 
-				PRIMARY KEY (id), 
-				FOREIGN KEY(networkid) REFERENCES network (id)
-			);
-			CREATE TABLE IF NOT EXISTS log (
-				id INTEGER NOT NULL, 
-				type INTEGER NOT NULL, 
-				timestamp INTEGER NOT NULL, 
-				bufferid INTEGER NOT NULL, 
-				senderid INTEGER NOT NULL, 
-				message VARCHAR, 
-				PRIMARY KEY (id), 
-				FOREIGN KEY(bufferid) REFERENCES buffer (id), 
-				FOREIGN KEY(senderid) REFERENCES sender (id)
-			);
-			CREATE INDEX IF NOT EXISTS logBufferTimestamp ON log(bufferid, timestamp);
-		""")
+		self.cur.executescript(
+			"CREATE TABLE IF NOT EXISTS sender (\n"
+			"	id INTEGER NOT NULL,\n"
+			"	nick VARCHAR COLLATE NOCASE,\n"
+			"	user VARCHAR COLLATE NOCASE,\n"
+			"	host VARCHAR COLLATE NOCASE,\n"
+			"	PRIMARY KEY (id)\n"
+			");\n"
+			"CREATE TABLE IF NOT EXISTS network (\n"
+			"	id INTEGER NOT NULL,\n"
+			"	name VARCHAR COLLATE NOCASE,\n"
+			"	PRIMARY KEY (id)\n"
+			");\n"
+			"CREATE TABLE IF NOT EXISTS buffer (\n"
+			"	id INTEGER NOT NULL,\n"
+			"	networkid INTEGER NOT NULL,\n"
+			"	name VARCHAR COLLATE NOCASE,\n"
+			"	PRIMARY KEY (id),\n"
+			"	FOREIGN KEY (networkid) REFERENCES network (id)\n"
+			");\n"
+			"CREATE TABLE IF NOT EXISTS log (\n"
+			"	id INTEGER NOT NULL,\n"
+			"	type INTEGER NOT NULL,\n"
+			"	timestamp INTEGER NOT NULL,\n"
+			"	bufferid INTEGER NOT NULL,\n"
+			"	senderid INTEGER NOT NULL,\n"
+			"	message VARCHAR,\n"
+			"	PRIMARY KEY (id),\n"
+			"	FOREIGN KEY (bufferid) REFERENCES buffer (id),\n"
+			"	FOREIGN KEY (senderid) REFERENCES sender (id)\n"
+			");\n"
+			"CREATE INDEX IF NOT EXISTS logBufferTimestamp ON log(bufferid, timestamp);\n"
+		)
 
 		self.lock = RLock()
 
