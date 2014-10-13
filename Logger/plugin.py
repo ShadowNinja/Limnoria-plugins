@@ -43,32 +43,37 @@ class Logger(callbacks.Plugin):
 			irc.reply("I haven't seen %s in %s." % (nick, channel))
 			return
 		t = time.time()
-		rpl = "I saw %s in %s %s ago" % (
+		rpl = "I saw %s in %s %s ago " % (
 			nick,
 			channel,
 			utils.timeElapsed(t - entry["timestamp"])
 		)
 		tp = entry["type"]
 		if tp == MessageType.privmsg or\
-		   tp == MessageType.notice or\
-		   tp == MessageType.action:
-			rpl += " saying \"%s\"" % (entry["message"],)
+				tp == MessageType.notice:
+			rpl += "saying \"%s\"" % (entry["message"],)
+		elif tp == MessageType.action:
+			rpl += "saying * %s %s" % (entry["nick"], entry["message"])
 		elif tp == MessageType.join:
-			rpl += " joining."
+			rpl += "joining."
 		elif tp == MessageType.part:
-			rpl += " parting (%s)" % (entry["message"],)
+			rpl += "parting (%s)." % (entry["message"],)
 		elif tp == MessageType.quit:
-			rpl += " quiting (%s)" % (entry["message"],)
+			rpl += "quiting"
+			if entry["message"] != "":
+				rpl += " (%s)" % (entry["message"],)
+			rpl += "."
 		elif tp == MessageType.kick:
-			rpl += " kicking %s (%s)" % (
-					entry["message"].split(' ')[0],
-					entry["message"].split(' ')[1:])
+			kicked, space, reason = entry["message"].partition(" ")
+			rpl += "kicking %s (%s)." % (kicked, reason)
 		elif tp == MessageType.nick:
-			rpl += " changing nick to %s" % (entry["message"],)
+			rpl += "changing nick to %s." % (entry["message"],)
 		elif tp == MessageType.mode:
-			rpl += " setting mode %s" % (entry["message"],)
+			rpl += "setting mode(s) %s." % (entry["message"],)
 		elif tp == MessageType.topic:
-			rpl += " setting the topic to \"%s\"" % (entry["message"],)
+			rpl += "setting the topic to \"%s\"" % (entry["message"],)
+		else:
+			rpl += "doing who knows what."
 		irc.reply(rpl)
 
 	def seen(self, irc, msg, args, channel, nick):
