@@ -11,7 +11,7 @@ import time
 
 from .storage import LogDB, MessageType
 
-filename = conf.supybot.directories.data.dirize("Log.sqlite")
+filename = conf.supybot.directories.log.dirize("Log.sqlite")
 
 class Logger(callbacks.Plugin):
 	"""
