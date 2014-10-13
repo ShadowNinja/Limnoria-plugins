@@ -177,15 +177,17 @@ class Logger(callbacks.Plugin):
 			reason = msg.args[0]
 		if not isinstance(irc, irclib.Irc):
 			irc = irc.getRealIrc()
+		if not irc in self.lastStates:
+			return
 		for (channel, chan) in self.lastStates[irc].channels.items():
-			if msg.nick in chan.users:
-				if not self.registryValue("enable", channel):
-					continue
-				self.db.add(MessageType.quit,
-					irc.network,
-					channel,
-					msg,
-					reason)
+			if not self.registryValue("enable", channel) or\
+					msg.nick not in chan.users:
+				continue
+			self.db.add(MessageType.quit,
+				irc.network,
+				channel,
+				msg,
+				reason)
 		self.db.commit()
 
 	def outFilter(self, irc, msg):
