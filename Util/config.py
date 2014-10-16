@@ -10,7 +10,7 @@ def configure(advanced):
 	conf.registerPlugin('Util', True)
 
 
-BotYield = conf.registerPlugin('Util')
+Util = conf.registerPlugin('Util')
 # This is where your configuration variables (if any) should go.  For example:
 # conf.registerGlobalValue(Admin, 'someConfigVariableName',
 # 	registry.Boolean(False, """Help for someConfigVariableName."""))
