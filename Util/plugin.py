@@ -7,15 +7,15 @@ class Util(callbacks.Plugin):
 	"""
 
 	def stripto(self, irc, msg, args, delim, s):
-		"""<delemiter> <string>
+		"""<delimiter> <string>
 
-		Returns the portion of string before the first occurance of delemiter.
+		Returns the portion of string before the first occurance of <delimiter>.
 		"""
 		pos = s.find(delim)
 		if pos >= 0:
 			irc.reply(s[0:pos])
 		else:
-			irc.error("Delemiter not found in \"%s\"" % s)
+			irc.error("Delimiter not found in \"%s\"" % s)
 	stripto = wrap(stripto, ["something", "text"])
 
 Class = Util
