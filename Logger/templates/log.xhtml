@@ -1,0 +1,43 @@
+{% extends "layout.xhtml" %}
+{% block title %}{{ channel|e }} log - {{ today }}{% endblock %}
+{% block head %}
+	<style type="text/css">
+		#log tr:nth-child(even) { background: #E0E0E0; }
+		#log tr:nth-child(odd) { background: #F6F6F6; }
+		#log th {
+			background: #E0E0E0;
+			color: #0000A0;
+			font-size: 1.5em;
+		}
+		#log td.nick {
+			text-align: right;
+		}
+		#log td.time {
+			color: #505050;
+		}
+		#log {
+			border-collapse: collapse;
+			width: 100%;
+			word-wrap: break-word;
+		}
+	</style>
+{% endblock %}
+{% block content %}
+<a href="{{ yesterday }}">&lt;-- Yesterday</a>
+<a href="{{ tommorow }}">Tommorow --&gt;</a>
+</br>
+<table id="log">
+	<thead>
+	<tr>
+		<th>Time</th>
+		<th>Nick</th>
+		<th>Message</th>
+	<tr>
+	</thead>
+	{{ log }}
+</table>
+Rendered {{ logsize }} messages in {{ rendertime + dbtime }} seconds.
+({{ dbtime }} seconds DB, {{ rendertime }} seconds Python,
+{% if logsize == 0 %} 0 {% else %} {{ (rendertime + dbtime) / logsize }} {% endif %} seconds per message)
+{% endblock %}
+

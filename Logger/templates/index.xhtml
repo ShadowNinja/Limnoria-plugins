@@ -1,0 +1,35 @@
+{% extends "layout.xhtml" %}
+{% block title %}Channel log index{% endblock %}
+{% block head %}
+	<style type="text/css">
+	#buffers td {
+		border: 1px solid black;
+	}
+	thead {
+		color: #00A000;
+		font-size: 1.5em;
+	}
+	</style>
+{% endblock %}
+{% block content %}
+<h1>Channel log index:</h1><br />
+<table id="buffers">
+	<thead>
+	{% for net in buffers %}
+		<td>{{ net }}</td>
+	{% endfor %}
+	</thead>
+{% for i in range(maxChannels) %}
+	<tr>
+	{% for net in buffers %}
+		{% if buffers[net]|length > i %}
+			<td><a href="{{ net|e }}/{{ buffers[net][i]|urlencode }}">{{ buffers[net][i]|e }}</a>
+				- <a href="{{ net|e }}/{{ buffers[net][i]|urlencode }}/today">today</a>
+			</td>
+		{% endif %}
+	{% endfor %}
+	</tr>
+{% endfor %}
+</table>
+{% endblock %}
+

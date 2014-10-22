@@ -5,11 +5,14 @@ import supybot.utils as utils
 import supybot.ircmsgs as ircmsgs
 import supybot.world as world
 import supybot.irclib as irclib
+import supybot.httpserver as httpserver
 from supybot.commands import *
 
 import time
 
 from .storage import LogDB, MessageType
+from .server import HTTPLogCallback
+
 
 filename = conf.supybot.directories.log.dirize("Log.sqlite")
 
@@ -28,7 +31,18 @@ class Logger(callbacks.Plugin):
 		self.__parent = super(Logger, self)
 		self.__parent.__init__(irc)
 		self.db = LogDB(filename)
+		callback = HTTPLogCallback(self)
+		httpserver.hook("logs", callback)
 		world.flushers.append(self.flush)
+
+	def die(self):
+		self.__parent.die()
+		world.flushers.remove(self.flush)
+		httpserver.unhook("logs")
+		del self.db
+
+	def flush(self):
+		self.db.commit()
 
 	def _seen(self, irc, msg, channel, nick, findAny):
 		if nick == irc.nick:
@@ -105,14 +119,6 @@ class Logger(callbacks.Plugin):
 	def reset(self):
 		self.lastMsgs.clear()
 		self.lastStates.clear()
-
-	def die(self):
-		self.__parent.die()
-		world.flushers.remove(self.flush)
-		del self.db
-
-	def flush(self):
-		self.db.commit()
 
 	def shouldLog(self, irc, msg, msgtype):
 		if not self.registryValue("enable"):

@@ -18,15 +18,17 @@ __contributors__ = {}
 
 from . import config
 from . import storage
+from . import server
 from . import plugin
 from imp import reload
 # In case we're being reloaded.
 reload(config)
 reload(storage)
+reload(server)
 reload(plugin)
 
 if world.testing:
-    from . import test
+	from . import test
 
 Class = plugin.Class
 configure = config.configure

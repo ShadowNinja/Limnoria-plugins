@@ -1,0 +1,17 @@
+{% extends "layout.xhtml" %}
+{% block title %}{{ channel|e }} logs{% endblock %}
+{% block head %}
+<style type="text/css">
+	.month {
+		border: 1px solid black;
+	}
+	.month thead.month-name {
+		text-align: center;
+	}
+</style>
+{% endblock %}
+{% block content %}
+<h1>Days logged:</h1>
+{{ calendar }}
+{% endblock %}
+

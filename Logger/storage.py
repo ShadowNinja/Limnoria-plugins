@@ -1,5 +1,5 @@
-
 import time
+import datetime
 import sqlite3
 from threading import RLock
 
@@ -87,8 +87,8 @@ class LogDB:
 			SELECT * FROM buffer
 			INNER JOIN network ON network.id=buffer.networkid
 			WHERE
-				network.name=? AND
-				buffer.name=?
+				network.name = ? AND
+				buffer.name = ?
 		""", (network, name)).fetchone()
 
 
@@ -136,23 +136,30 @@ class LogDB:
 				text
 			))
 
-	def get(self, bufid, starttime, timelen):
+	def get(self, bufId, startTime, timeLen):
 		with self.lock:
 			return self.cur.execute("""
-					SELECT * FROM log
-					INNER JOIN buffer ON buffer.id=log.bufferid
-					INNER JOIN network ON network.id=buffer.networkid
-					INNER JOIN sender ON sender.id=log.senderid
+					SELECT
+						buffer.name as buffer_name,
+						sender.*,
+						log.*
+					FROM log
+					INNER JOIN buffer ON buffer.id = log.bufferid
+					INNER JOIN sender ON sender.id = log.senderid
 					WHERE
-						log.bufferid=? AND
+						log.bufferid = ? AND
 						log.timestamp BETWEEN ? AND ?
-					ORDER BY id ASC
-				""", (bufid, starttime, starttime + timelen)).fetchall()
+					ORDER BY log.id ASC
+				""", (bufId, startTime, startTime + timeLen)).fetchall()
+			#INNER JOIN network ON network.id = buffer.networkid
 
 	def getBuffers(self):
 		with self.lock:
 			return self.cur.execute("""
-					SELECT * FROM buffer
+					SELECT
+						network.name AS network_name,
+						buffer.*
+					FROM buffer
 					INNER JOIN network ON network.id=buffer.networkid
 					ORDER BY id ASC
 				""").fetchall()
@@ -195,4 +202,21 @@ class LogDB:
 					ORDER BY id DESC
 					LIMIT 1
 				""", (bufid, nick)).fetchone()
+
+	def getDates(self, bufferid):
+		with self.lock:
+			self.cur.execute("SELECT DISTINCT timestamp "
+					"FROM log WHERE bufferid = ? "
+					"ORDER BY timestamp ASC",
+				(bufferid,))
+			dates = [None]
+			times = self.cur.fetchmany()
+			while times:
+				for (time,) in times:
+					date = datetime.date.fromtimestamp(time)
+					if date != dates[-1]:
+						dates.append(date)
+				times = self.cur.fetchmany()
+			dates.pop(0)
+			return dates
 
