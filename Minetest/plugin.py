@@ -83,8 +83,8 @@ class Minetest(callbacks.Plugin):
 		clients = str(server["clients"]) + "/" + str(server["clients_top"])
 
 		address = server["address"]
-		if not server["port"] == "30000":
-			address = address + " | Port: " + server["port"]
+		if not server["port"] == 30000:
+			address = address + " | Port: " + str(server["port"])
 
 		irc.reply("%s | %s | Clients: %s | Version: %s | Ping: %s" %\
 		         (server["name"], address, clients, server["version"], server["ping"]))
