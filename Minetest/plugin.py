@@ -86,8 +86,10 @@ class Minetest(callbacks.Plugin):
 		if not server["port"] == 30000:
 			address = address + " | Port: " + str(server["port"])
 
-		irc.reply("%s | %s | Clients: %s | Version: %s | Ping: %s" %\
-		         (server["name"], address, clients, server["version"], server["ping"]))
+		ping_ms = int(server["ping"] * 1000)
+
+		irc.reply("%s | %s | Clients: %s | Version: %s | Ping: %sms" %\
+		         (server["name"], address, clients, server["version"], ping_ms))
 
 	server = wrap(server, [getopts({
 			#Number values are "something" to allow for <, !, highest, etc.
