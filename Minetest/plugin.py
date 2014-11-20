@@ -59,14 +59,14 @@ class Minetest(callbacks.Plugin):
 
 
 	def server(self, irc, msg, args, options):
-		'''[--{name,address,players,ping,port} <value>]
+		'''[--{name,address,ip,players,ping,port} <value>]
 
 		On numeric options like 'ping', 'port' and 'players' <value> can be  num, <num, >num, !num, highest, or lowest.
 		'''
 		data = utils.web.getUrl("http://servers.minetest.net/list")
 		server_list = json.loads(data.decode("UTF-8"))["list"]
 
-		#Run through every filter suplied while we have a result
+		# Run through every filter suplied while we have a result
 		for option in options:
 			if len(server_list) > 0:
 				server_list = self.serverSearchFilters[option[0]]\
@@ -92,9 +92,10 @@ class Minetest(callbacks.Plugin):
 		         (server["name"], address, clients, server["version"], ping_ms))
 
 	server = wrap(server, [getopts({
-			#Number values are "something" to allow for <, !, highest, etc.
+			# Number values are "something" to allow for <, !, highest, etc.
 			"name":    "something",
 			"address": "something",
+			"ip":      "something",
 			"version": "something",
 			"game":    "something",
 			"players": "something",
@@ -158,6 +159,7 @@ class Minetest(callbacks.Plugin):
 
 	serverSearchFilters = {
 		"address": lambda self, server_list, arg: self.filterServersByName(server_list, arg, "address"),
+		"ip":      lambda self, server_list, arg: self.filterServersByName(server_list, arg, "ip"),
 		"name":    lambda self, server_list, arg: self.filterServersByName(server_list, arg, "name"),
 		"version": lambda self, server_list, arg: self.filterServersByName(server_list, arg, "version"),
 		"game":    lambda self, server_list, arg: self.filterServersByName(server_list, arg, "gameid"),
