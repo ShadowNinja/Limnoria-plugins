@@ -49,10 +49,14 @@ class Minetest(callbacks.Plugin):
 		for i in range(0, resultQueue.qsize()):
 			info = resultQueue.get_nowait()
 			if info[1] is None:
-				results.append("Error. Invalid address?")
-				break
-			results.append("port " + str(info[0]) + " is "
-					+ (info[1] and ("up (%dms)" % info[1]) or "down"))
+				results.append("port %d has an error" % (info[0],))
+				continue
+			msg = "port %d is " % (info[0],)
+			if info[1]:
+				msg += "up (%dus)" % (info[1] * 1000000,)
+			else:
+				msg += "down"
+			results.append(msg)
 		irc.reply(address + " " + (" | ".join(results)))
 	up = wrap(up, ['somethingWithoutSpaces', optional('somethingWithoutSpaces')])
 
@@ -173,22 +177,22 @@ class Minetest(callbacks.Plugin):
 		queue.put([port, self.serverUp(address, port)])
 
 	def serverUp(self, address, port):
-		repres = address + ':' + str(port)
 		try:
-			start = time.time()
 			sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 			sock.settimeout(2.5)
-			buf = b'\x4f\x45\x74\x03\x00\x00\x00\x01'
-			sock.sendto(buf, (address, port))
-			data, addr = sock.recvfrom(1000)
+			sock.connect((address, port))
+			buf = b"\x4f\x45\x74\x03\x00\x00\x00\x01"
+			sock.send(buf)
+			start = time.time()
+			data = sock.recv(1024)
+			end = time.time()
 			if not data:
 				return False
 			peer_id = data[12:14]
-			buf = b'\x4f\x45\x74\x03' + peer_id + b'\x00\x00\x03'
-			sock.sendto(buf, (address, port))
+			buf = b"\x4f\x45\x74\x03" + peer_id + b"\x00\x00\x03"
+			sock.send(buf)
 			sock.close()
-			end = time.time()
-			return int((end - start) * 1000)
+			return end - start
 		except socket.timeout:
 			return False
 		except:
