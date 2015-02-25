@@ -39,17 +39,27 @@ class Minetest(callbacks.Plugin):
 		results = []
 		threads = []
 		for port in ports:
+			try:
+				info = socket.getaddrinfo(address, port,
+						type=socket.SOCK_DGRAM,
+						proto=socket.SOL_UDP)[0]
+			except Exception as e:
+				irc.reply("Resolving %s failed: %s" %
+					(address, str(e)))
+				return
+
 			th = threading.Thread(name="ParallelServerUpThread-" + str(port),
 					target=self.parallelServerUp,
-					args=(resultQueue, address, port))
+					args=(resultQueue, info, port))
 			th.start()
 			threads.append(th)
 		for th in threads:
 			th.join()  # Wait for all threads to finish
 		for i in range(0, resultQueue.qsize()):
 			info = resultQueue.get_nowait()
-			if info[1] is None:
-				results.append("port %d has an error" % (info[0],))
+			if isinstance(info[1], Exception):
+				results.append("port %d errored: %s" %
+						(info[0], str(info[1])))
 				continue
 			msg = "port %d is " % (info[0],)
 			if info[1]:
@@ -173,14 +183,14 @@ class Minetest(callbacks.Plugin):
 		"port":    lambda self, server_list, arg: self.filterServersByNum(server_list, arg, "port", int)
 	}
 
-	def parallelServerUp(self, queue, address, port):
-		queue.put([port, self.serverUp(address, port)])
+	def parallelServerUp(self, queue, info, port):
+		queue.put([port, self.serverUp(info)])
 
-	def serverUp(self, address, port):
+	def serverUp(self, info):
 		try:
-			sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+			sock = socket.socket(info[0], info[1], info[2])
 			sock.settimeout(2.5)
-			sock.connect((address, port))
+			sock.connect(info[4])
 			buf = b"\x4f\x45\x74\x03\x00\x00\x00\x01"
 			sock.send(buf)
 			start = time.time()
@@ -195,8 +205,8 @@ class Minetest(callbacks.Plugin):
 			return end - start
 		except socket.timeout:
 			return False
-		except:
-			return None
+		except Exception as e:
+			return e
 
 	def getPorts(self, port, irc):
 		if '-' in port or ',' in port:
