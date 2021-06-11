@@ -1,258 +1,343 @@
 import re
 import time
-import string  # For string.ascii_lowercase (detecting CAPS floods)
 
-import supybot.conf as conf
-import supybot.ircutils as ircutils
-import supybot.ircmsgs as ircmsgs
-import supybot.ircdb as ircdb
+from supybot import callbacks, conf, ircutils, ircmsgs, ircdb, schedule, world
 from supybot.commands import *
-import supybot.callbacks as callbacks
-import supybot.schedule as schedule
-from supybot.i18n import PluginInternationalization, internationalizeDocstring
-_ = PluginInternationalization('FloodProtector')
+
+
+MSG_COMMANDS = ("PRIVMSG", "NOTICE")
+JOIN_COMMANDS = ("JOIN", "PART", "QUIT")
+CHECKED_COMMANDS = MSG_COMMANDS + JOIN_COMMANDS
+
+
+class RateLimiter:
+	"""
+	This implements rate limiting using a "leaky bucket" approach.
+	Each user is given a bucket.  Each message received "fills" the bucket until
+	it "overflows" and the limit is tripped or it "leeks" out at the timeout rate.
+
+	This is implemented by keeping track of two numbers per user:
+	 * The last bucket level and
+	 * The time of the last bucket level calculation
+	Then, when a new message is received we simply subtract 1 for every timeout
+	that has ocurred since the last bucket level calculation and add 1 for the
+	new message.
+	"""
+	def __init__(self):
+		self.buckets = {}
+
+	def __call__(self, key, timeout, count=1):
+		now = time.time()
+		if key in self.buckets:
+			level, lastUpdate = self.buckets[key]
+		else:
+			level, lastUpdate = 0, now
+
+		level = self._updateLevel(level, lastUpdate, now, timeout) + count
+
+		self.buckets[key] = (level, now)
+
+		return level
+
+	def _updateLevel(self, level, lastUpdate, now, timeout):
+		"""
+		Calculate what the current bucket level should be based on its last
+		level and the time that has passed since then.
+		"""
+		timeoutsPassed = (now - lastUpdate) / timeout
+		return max(0, level - timeoutsPassed)
+
+	def cleanup(self, timeout):
+		"""
+		Delete empty buckets.
+		"""
+		now = time.time()
+		toDelete = []
+
+		for key, (level, lastUpdate) in self.buckets.items():
+			if self._updateLevel(level, lastUpdate, now, timeout) <= 0:
+				toDelete.append(key)
+
+		for key in toDelete:
+			del self.buckets[key]
 
 
 class FloodProtector(callbacks.Plugin):
-	"""Kicks/Bans users for flooding"""
+	"""Protects a channel by kicking or banning users who flood the channel"""
 
-	regexs = {}  # Mass highlight
-	offenses = {}
-	# Users are immune for three secconds to prevent double kicks and bans
-	immunities = {}
-	repetitionRegex = re.compile(r"(.+?)\1+")
+	def __init__(self, irc):
+		super().__init__(irc)
+		# Regex for each channel.  Used for mass highlight detection.
+		self.nickRegexes = {}
+		self.offenseLimit = RateLimiter()
+		self.messageLimit = RateLimiter()
+		self.joinLimit = RateLimiter()
+		self.quitLimit = RateLimiter()
+		self.highlightLimit = RateLimiter()
+		self.slapLimit = RateLimiter()
+		# Users are immune shortly after triggering protection to prevent
+		# double kicks and bans if the bot sees a few messages come through
+		# right after it sends the kick or ban.
+		self.punishTime = {}
 
+		world.flushers.append(self.cleanup)
+
+		self.makeNickRegex(irc)
+
+	def cleanup(self):
+		now = time.time()
+
+		self.offenseLimit.cleanup(self.registryValue("offenseTimeout"))
+		self.messageLimit.cleanup(self.registryValue("floodTimeout"))
+		self.joinLimit.cleanup(self.registryValue("joinFloodTimeout"))
+		self.quitLimit.cleanup(self.registryValue("badConnectionTimeout"))
+		self.highlightLimit.cleanup(self.registryValue("highlightTimeout"))
+		self.slapLimit.cleanup(self.registryValue("slapTimeout"))
+
+		immunityTime = self.registryValue("immunityTime")
+		self.punishTime = {
+			k: v for k, v in self.punishTime.items()
+			if now - v < immunityTime
+		}
 
 	def inFilter(self, irc, msg):
-		if msg.command in ("PRIVMSG", "NOTICE", "JOIN", "PART", "QUIT"):
-			channel = msg.args[0]
-			if ircutils.isChannel(channel) and\
-			   self.registryValue("enabled", channel):
-				if msg.command in ("PRIVMSG", "NOTICE"):
-					self.checkMessageFlood(irc, msg)
-				elif msg.command in ("JOIN", "PART", "QUIT"):
-					self.checkJoinFlood(irc, msg)
+		if not msg.prefix:
+			# Outgoing message from the bot
+			return
+		if msg.command not in CHECKED_COMMANDS:
+			return
+		channel = msg.args[0]
+		if ircutils.isChannel(channel) and \
+				self.registryValue("enabled", channel):
+			if msg.command in MSG_COMMANDS:
+				self.checkMessageFlood(irc, msg)
+			elif msg.command == "JOIN":
+				self.checkJoinFlood(irc, msg)
+			elif msg.command == "QUIT":
+				self.checkbadConnectionFlood(irc, msg)
 		return msg
 
-
-	def generateRecent(self, irc, msg, commands, maxNeeded = 5):
+	def generateRecent(self, irc, msg, commands, maxNeeded=5):
 		recent = []
-		# Sorted in order of arival
+		# Sorted in order of arrival
 		for item in reversed(irc.state.history):
-			if item.command in commands and\
-			   item.nick == msg.nick and\
-			   item.args[0] == msg.args[0]:
+			if item.command in commands and \
+					item.nick == msg.nick and \
+					item.args[0] == msg.args[0]:
 				recent.insert(0, item)
 				if len(recent) >= maxNeeded:
 					break
 		return recent
 
-
 	def checkJoinFlood(self, irc, msg):
 		channel = msg.args[0]
-		recentJoins = self.generateRecent(irc, msg, ("JOIN", "PART", "QUIT"), 6)
+		joinFloodLimit = self.registryValue("joinFloodLimit")
+		joinFloodTimeout = self.registryValue("joinFloodTimeout")
+		joinKey = (irc.network, channel, msg.host)
 
-		# Flaping connection
-		if len(recentJoins) >= 6 and\
-		   recentJoins[-1].receivedAt - recentJoins[-6].receivedAt < 240:
-			self.banForward(irc, msg, "#fix_your_connection")
+		if self.joinLimit(joinKey, joinFloodTimeout) > joinFloodLimit:
+			hostmask = irc.state.nickToHostmask(msg.nick)
+			banmaskstyle = conf.supybot.protocols.irc.banmask
+			banmask = banmaskstyle.makeBanmask(hostmask)
 
+			irc.queueMsg(ircmsgs.ban(channel, banmask))
+
+			self.log.warning("Banned %s (%s) from %s for join flood.",
+				banmask, msg.nick, channel)
+
+	def getBadConnectionChannel(self, irc):
+		config = self.registryValue("badConnectionChannel")
+		for chan in config:
+			if "/" in chan:
+				network, chan = chan.split("/", 1)
+				if network == irc.network:
+					return chan
+			else:
+				return chan
+		return None
+
+	def checkbadConnectionFlood(self, irc, msg):
+		badConnectionLimit = self.registryValue("badConnectionLimit")
+		badConnectionTimeout = self.registryValue("badConnectionTimeout")
+		badConnectionBanTime = self.registryValue("badConnectionBanTime")
+		badConnectionChannel = self.getBadConnectionChannel(irc)
+		quitKey = (irc.network, msg.host)
+
+		if self.quitLimit(quitKey, badConnectionTimeout) > badConnectionLimit:
+			self.banForward(irc, msg, badConnectionChannel, badConnectionBanTime)
+
+	def banForward(self, irc, msg, forwardChannel, banLength):
+		channel = msg.args[0]
+		msg_chan_state = irc.state.channels[channel]
+		if irc.nick not in msg_chan_state.ops and \
+				irc.nick not in msg_chan_state.halfops:
+			self.log.warning("%s has a bad connection in %s, but not oped.",
+				msg.nick, channel)
+			return
+
+		hostmask = irc.state.nickToHostmask(msg.nick)
+		banmaskStyle = conf.supybot.protocols.irc.banmask
+		banmask = banmaskStyle.makeBanmask(hostmask)
+		banmask += "$" + forwardChannel
+
+		irc.queueMsg(ircmsgs.ban(channel, banmask))
+
+		self.log.warning("Ban-forwarded %s (%s) from %s to %s.",
+				banmask, msg.nick, channel, forwardChannel)
+
+		if banLength is not None:
+			schedule.addEvent(self.unBan, time.time() + banLength,
+					args=[irc, channel, banmask, msg.nick])
+
+	def unBan(self, irc, channel, banmask, nick):
+		irc.queueMsg(ircmsgs.mode(channel, ("-b", banmask)))
+
+		self.log.warning("Unbanned %s (%s) from %s.", banmask, nick, channel)
 
 	def checkMessageFlood(self, irc, msg):
 		channel = msg.args[0]
 		message = ircutils.stripFormatting(msg.args[1])
-		recentMessages = self.generateRecent(irc, msg, ("PRIVMSG", "NOTICE"))
+		recentMessages = self.generateRecent(irc, msg, MSG_COMMANDS)
+		channelKey = (irc.network, channel)
+		userKey = (irc.network, channel, msg.host)
 
 		# Regular message flood
-		if len(recentMessages) >= 5:
-			if (recentMessages[-1].receivedAt -\
-			    recentMessages[-5].receivedAt) <= 6:
-				self.floodPunish(irc, msg, "Message", dummy = False)
+		floodLimit = self.registryValue("floodLimit")
+		floodTimeout = self.registryValue("floodTimeout")
+		if self.messageLimit(userKey, floodTimeout) > floodLimit:
+			self.floodPunish(irc, msg, "Message")
 
-		# Message repitition flood
-		if len(recentMessages) >= 3:
-			firstTime = recentMessages[-3].receivedAt
+		# Message repetition flood
+		repeatLimit = self.registryValue("repeatLimit")
+		repeatTime = self.registryValue("repeatTime")
+		if len(recentMessages) > repeatLimit:
+			firstIdx = len(recentMessages) - repeatLimit - 1
+			firstTime = recentMessages[firstIdx].receivedAt
 			curTime = recentMessages[-1].receivedAt
-			if (recentMessages[-3].args[1] ==\
-			    recentMessages[-2].args[1] ==\
-			    recentMessages[-1].args[1]) and\
-			    curTime - firstTime < 60:
-				self.floodPunish(irc, msg, "Message repetition", dummy = False)
+			curText = recentMessages[-1].args[1]
+			matching = (msg.args[1] == curText for msg in recentMessages[firstIdx:-1])
+			if curTime - firstTime < repeatTime and all(matching):
+				self.floodPunish(irc, msg, "Message repetition")
 				return
 
-		# Repitition
-		#def repetitions(r, s):
-		#	for match in r.finditer(s):
-		#		yield((match.group(1), len(match.group(0)) / len(match.group(1))))
-
-		#repetitionList = list(repetitions(self.repetitionRegex,
-		#		recentMessages[-1].args[1]))
-
-		#for rep in repetitionList:
-		#	if rep[1] > 10:
-		#		self.floodPunish(irc, msg, "Repetition", dummy = True)
-		#		return
-
-		# Paste flood
-		typedTooFast = lambda recent, old:\
-			len(recent.args[1]) > (recent.receivedAt - old.receivedAt) * 30
-		if len(recentMessages) >= 4 and\
-		   typedTooFast(recentMessages[-1], recentMessages[-2]) and\
-		   typedTooFast(recentMessages[-2], recentMessages[-3]) and\
-		   typedTooFast(recentMessages[-3], recentMessages[-4]):
-			self.floodPunish(irc, msg, "Paste", dummy = False)
-			return
-
 		# Slap flood
-		isSlap = lambda x: ircmsgs.isAction(x) and x.args[1][8:13] == "slaps"
-		if len(recentMessages) > 3 and\
-		   isSlap(recentMessages[-1]) and\
-		   isSlap(recentMessages[-2]) and\
-		   isSlap(recentMessages[-3]) and\
-		   (recentMessages[-1].receivedAt - recentMessages[-3].receivedAt) < 30:
+		slapLimit = self.registryValue("slapLimit")
+		slapTimeout = self.registryValue("slapTimeout")
+		if ircmsgs.isAction(msg) and "slaps" in message and \
+				self.slapLimit(userKey, slapTimeout) > slapLimit:
 			self.floodPunish(irc, msg, "Slap")
 			return
 
 		# Mass highlight
-		if irc.network in self.regexs and\
-		   channel in self.regexs[irc.network]:
-			matches = self.regexs[irc.network][channel].findall(message)
-			if len(matches) > 10:
+		highlightLimit = self.registryValue("highlightLimit")
+		highlightTimeout = self.registryValue("highlightTimeout")
+		if channelKey in self.nickRegexes:
+			matches = self.nickRegexes[channelKey].findall(message)
+			if self.highlightLimit(userKey, highlightTimeout, len(matches)) > highlightLimit:
 				self.floodPunish(irc, msg, "Highlight")
 				return
 
-		# CAPS FLOOD
-		#def tooManyCaps(s):
-		#	if len(s) == 0: return False
-		#	numNotCaps = 0
-		#	for c in s:
-		#		if c in string.ascii_lowercase:
-		#			numNotCaps += 1
-		#	return numNotCaps / len(s) < 0.25
-		#if len(recentMessages) >= 3:
-		#	if tooManyCaps(recentMessages[-1].args[1]) and\
-		#	   tooManyCaps(recentMessages[-2].args[1]) and\
-		#	   tooManyCaps(recentMessages[-3].args[1]):
-		#		self.floodPunish(irc, msg, "CAPS", dummy = True)
-		#		return
-
-
-	def banForward(self, irc, msg, channel):
-		hostmask = irc.state.nickToHostmask(msg.nick)
-		banmaskstyle = conf.supybot.protocols.irc.banmask
-		banmask = banmaskstyle.makeBanmask(hostmask)
-		irc.queueMsg(ircmsgs.mode(msg.args[0], ("+b", banmask + "$" + channel)))
-		self.log.warning("Ban-forwarded %s (%s) from %s to %s.",
-				banmask, msg.nick, msg.args[0], channel)
-
-
-	def floodPunish(self, irc, msg, floodType, dummy = False):
+	def floodPunish(self, irc, msg, floodType):
+		now = time.time()
 		channel = msg.args[0]
+		channel_state = irc.state.channels[channel]
+		offenseKey = (irc.network, channel, msg.host)
 
-		if (not irc.nick in irc.state.channels[channel].ops) and\
-		   (not irc.nick in irc.state.channels[channel].halfops):
-			self.log.warning("%s flooded in %s, but not opped.",\
-				msg.nick, channel)
+		immunityTime = self.registryValue("immunityTime")
+
+		if irc.nick not in channel_state.ops and \
+				irc.nick not in channel_state.halfops:
+			self.log.warning("%s flood by %s detected in %s, but not oped.",\
+				floodType, msg.nick, channel)
 			return
 
-		if msg.nick in self.immunities:
-			self.log.debug("Not punnishing %s, they are immune.",
-				msg.nick)
+		if offenseKey in self.punishTime and \
+				now - self.punishTime[offenseKey] < immunityTime:
+			self.log.debug("Not punishing %s, they are immune.", msg.nick)
 			return
 
-		if msg.nick in irc.state.channels[channel].ops or\
-		   msg.nick in irc.state.channels[channel].halfops or\
-		   msg.nick in irc.state.channels[channel].voices:
-			self.log.debug("%s flooded in %s. But"\
-				+ " I will not punish them because they have"\
-				+ " special access.", msg.nick, channel)
+		if msg.nick in channel_state.ops or \
+				msg.nick in channel_state.halfops or \
+				msg.nick in channel_state.voices:
+			self.log.debug("%s flood by %s detected in %s, but "
+				"I will not punish them because they have "
+				"special access.", floodType, msg.nick, channel)
 			return
 
-		if ircdb.checkCapability(msg.prefix, 'trusted') or\
-		   ircdb.checkCapability(msg.prefix, 'admin') or\
-		   ircdb.checkCapability(msg.prefix, channel + ',op'):
-			self.log.debug("%s flooded in %s. But"\
-				+ " I will not punish them because they are"\
-				+ " trusted.", msg.nick, channel)
+		if ircdb.checkCapability(msg.prefix, 'trusted') or \
+				ircdb.checkCapability(msg.prefix, 'admin') or \
+				ircdb.checkCapability(msg.prefix, channel + ',op'):
+			self.log.debug("%s flood by %s detected in %s, but "
+				"I will not punish them because they are "
+				"trusted.", floodType, msg.nick, channel)
 			return
 
-		if msg.host in self.offenses and self.offenses[msg.host] > 2:
+		banIssued = False
+		offenseLimit = self.registryValue("offenseLimit")
+		offenseTimeout = self.registryValue("offenseTimeout")
+		if self.offenseLimit(offenseKey, offenseTimeout) > offenseLimit:
 			hostmask = irc.state.nickToHostmask(msg.nick)
 			banmaskstyle = conf.supybot.protocols.irc.banmask
 			banmask = banmaskstyle.makeBanmask(hostmask)
-			if not dummy:
-				irc.queueMsg(ircmsgs.ban(channel, banmask))
-			self.log.warning("Banned %s (%s) from %s for repeated"\
-				+ " flooding.", banmask, msg.nick, channel)
+
+			irc.queueMsg(ircmsgs.ban(channel, banmask))
+
+			banIssued = True
+			self.log.warning("Banned %s (%s) from %s for repeated flooding.",
+				banmask, msg.nick, channel)
 
 		reason = floodType + " flood detected."
-		if floodType == "Paste":
-			reason += " Use a pastebin like pastebin.ubuntu.com or gist.github.com."
 
-		if not dummy:
-			irc.queueMsg(ircmsgs.kick(channel, msg.nick, reason))
+		if floodType == "Message":
+			pastebin = self.registryValue("suggestedPastebin")
+			reason += " Use a pastebin like {}.".format(pastebin)
 
-		self.log.warning("Kicked %s from %s for %s flooding.",\
-				msg.nick, channel, floodType)
+		irc.queueMsg(ircmsgs.kick(channel, msg.nick, reason))
 
-		# Don't schedule the same nick twice
-		if not (msg.host in self.offenses):
-			schedule.addEvent(self.clearOffenses, time.time()+300,
-					args=[msg.host])
-			self.offenses[msg.host] = 0 # Incremented below
-		self.offenses[msg.host] += 1
+		self.punishTime[offenseKey] = now
 
-		self.immunities[msg.nick] = True
-		schedule.addEvent(self.unImmunify, time.time()+3,
-				args=[msg.nick])
+		if not banIssued:
+			self.log.warning("Kicked %s from %s for %s flooding.",
+					msg.nick, channel, floodType)
 
-	def clearOffenses(self, host):
-		if self.offenses[host] > 1:
-			self.offenses[host] -= 1
-			schedule.addEvent(self.clearOffenses, time.time()+300,
-					args=[host])
-		else:
-			del self.offenses[host]
-
-	def unImmunify(self, nick):
-		del self.immunities[nick]
-
-	def makeRegexp(self, irc, channel):
-		if channel is None:
+	def makeNickRegex(self, irc, channels=None):
+		if channels is None:
 			channels = irc.state.channels.keys()
-		else:
-			channels = [channel]
 
 		for channelName in channels:
-			longNicks = [x for x in\
-				irc.state.channels[channelName].users if len(x) > 3]
-			s = r"|".join(map(re.escape, longNicks))
+			channelKey = (irc.network, channelName)
+			if channelName not in irc.state.channels:
+				del self.nickRegexes[channelKey]
+				continue
 
-			if not irc.network in self.regexs:
-				self.regexs[irc.network] = {}
+			chan = irc.state.channels[channelName]
+			# Include minimum nick length to avoid matching nicks that are common words
+			longNicks = [x for x in chan.users if len(x) > 3]
+			regex = "|".join(map(re.escape, longNicks))
 
-			self.regexs[irc.network][channel] =\
-				re.compile(s, re.IGNORECASE)
+			self.nickRegexes[channelKey] = re.compile(regex, re.IGNORECASE)
 
 	def doJoin(self, irc, msg):
 		for channel in msg.args[0].split(","):
-			self.makeRegexp(irc, channel)
+			self.makeNickRegex(irc, [channel])
 
 	def doPart(self, irc, msg):
-		if msg.nick == irc.nick: return
+		if msg.nick == irc.nick:
+			return
 		for channel in msg.args[0].split(","):
-			self.makeRegexp(irc, channel)
+			self.makeNickRegex(irc, [channel])
 
 	def doQuit(self, irc, msg):
-		if msg.nick == irc.nick: return
-		self.makeRegexp(irc, None)
+		if msg.nick == irc.nick:
+			return
+		self.makeNickRegex(irc, None)
 
 	def doKick(self, irc, msg):
-		if msg.nick == irc.nick: return
-		self.makeRegexp(irc, msg.args[0])
+		if msg.nick == irc.nick:
+			return
+		self.makeNickRegex(irc, [msg.args[0]])
 
 	def doNick(self, irc, msg):
-		self.makeRegexp(irc, None)
+		self.makeNickRegex(irc, None)
 
 Class = FloodProtector
-
