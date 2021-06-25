@@ -136,14 +136,7 @@ class FloodProtector(callbacks.Plugin):
 		joinKey = (irc.network, channel, msg.host)
 
 		if self.joinLimit(joinKey, joinFloodTimeout) > joinFloodLimit:
-			hostmask = irc.state.nickToHostmask(msg.nick)
-			banmaskstyle = conf.supybot.protocols.irc.banmask
-			banmask = banmaskstyle.makeBanmask(hostmask)
-
-			irc.queueMsg(ircmsgs.ban(channel, banmask))
-
-			self.log.warning("Banned %s (%s) from %s for join flood.",
-				banmask, msg.nick, channel)
+			self.ban(irc, msg)
 
 	def getBadConnectionChannel(self, irc):
 		config = self.registryValue("badConnectionChannel")
@@ -166,26 +159,27 @@ class FloodProtector(callbacks.Plugin):
 		if self.quitLimit(quitKey, badConnectionTimeout) > badConnectionLimit:
 			self.banForward(irc, msg, badConnectionChannel, badConnectionBanTime)
 
-	def banForward(self, irc, msg, forwardChannel, banLength):
+	def ban(self, irc, msg, forwardChannel=None, banLength=None):
 		channel = msg.args[0]
 		msg_chan_state = irc.state.channels[channel]
 		if irc.nick not in msg_chan_state.ops and \
 				irc.nick not in msg_chan_state.halfops:
-			self.log.warning("%s has a bad connection in %s, but not oped.",
+			self.log.warning("Tried to ban %s from %s, but not oped.",
 				msg.nick, channel)
 			return
 
 		hostmask = irc.state.nickToHostmask(msg.nick)
 		banmaskStyle = conf.supybot.protocols.irc.banmask
 		banmask = banmaskStyle.makeBanmask(hostmask)
-		banmask += "$" + forwardChannel
+		if forwardChannel is not None:
+			banmask += "$" + forwardChannel
 
 		irc.queueMsg(ircmsgs.ban(channel, banmask))
 
-		self.log.warning("Ban-forwarded %s (%s) from %s to %s.",
-				banmask, msg.nick, channel, forwardChannel)
+		self.log.warning("Banned %s (%s) from %s.",
+				banmask, msg.nick, channel)
 
-		if banLength is not None:
+		if banLength:
 			schedule.addEvent(self.unBan, time.time() + banLength,
 					args=[irc, channel, banmask, msg.nick])
 
