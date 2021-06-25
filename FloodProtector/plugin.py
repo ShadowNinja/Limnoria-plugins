@@ -134,6 +134,8 @@ class FloodProtector(callbacks.Plugin):
 		joinFloodLimit = self.registryValue("joinFloodLimit")
 		joinFloodTimeout = self.registryValue("joinFloodTimeout")
 		joinKey = (irc.network, channel, msg.host)
+		if not msg.user.startswith("~"):
+			joinKey += (msg.user,)
 
 		if self.joinLimit(joinKey, joinFloodTimeout) > joinFloodLimit:
 			self.ban(irc, msg)
@@ -194,6 +196,8 @@ class FloodProtector(callbacks.Plugin):
 		recentMessages = self.generateRecent(irc, msg, MSG_COMMANDS)
 		channelKey = (irc.network, channel)
 		userKey = (irc.network, channel, msg.host)
+		if not msg.user.startswith("~"):
+			userKey += (msg.user,)
 
 		# Regular message flood
 		floodLimit = self.registryValue("floodLimit")
