@@ -239,12 +239,6 @@ class FloodProtector(callbacks.Plugin):
 
 		immunityTime = self.registryValue("immunityTime")
 
-		if irc.nick not in channel_state.ops and \
-				irc.nick not in channel_state.halfops:
-			self.log.warning("%s flood by %s detected in %s, but not oped.",\
-				floodType, msg.nick, channel)
-			return
-
 		if offenseKey in self.punishTime and \
 				now - self.punishTime[offenseKey] < immunityTime:
 			self.log.debug("Not punishing %s, they are immune.", msg.nick)
@@ -264,6 +258,12 @@ class FloodProtector(callbacks.Plugin):
 			self.log.debug("%s flood by %s detected in %s, but "
 				"I will not punish them because they are "
 				"trusted.", floodType, msg.nick, channel)
+			return
+
+		if irc.nick not in channel_state.ops and \
+				irc.nick not in channel_state.halfops:
+			self.log.warning("%s flood by %s detected in %s, but not oped.",\
+				floodType, msg.nick, channel)
 			return
 
 		banIssued = False
