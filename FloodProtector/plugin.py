@@ -103,9 +103,9 @@ class FloodProtector(callbacks.Plugin):
 	def inFilter(self, irc, msg):
 		if not msg.prefix:
 			# Outgoing message from the bot
-			return
+			return msg
 		if msg.command not in CHECKED_COMMANDS:
-			return
+			return msg
 		channel = msg.args[0]
 		if ircutils.isChannel(channel) and \
 				self.registryValue("enabled", channel):
@@ -199,6 +199,11 @@ class FloodProtector(callbacks.Plugin):
 		if not msg.user.startswith("~"):
 			userKey += (msg.user,)
 
+		if len(msg.nick) == 12 and msg.ident == "~" + msg.nick[:9]:
+			m = re.search(r'fr[e3][e3]n[o0]d[e3]', message, re.IGNORECASE)
+			if m and re.search(r'\d', m.group(0)):
+				ban(irc, msg, None, 3600 * 6)
+
 		# Regular message flood
 		floodLimit = self.registryValue("floodLimit")
 		floodTimeout = self.registryValue("floodTimeout")
@@ -209,7 +214,7 @@ class FloodProtector(callbacks.Plugin):
 		repeatLimit = self.registryValue("repeatLimit")
 		repeatTime = self.registryValue("repeatTime")
 		if len(recentMessages) > repeatLimit:
-			firstIdx = len(recentMessages) - repeatLimit - 1
+			firstIdx = int(len(recentMessages) - repeatLimit - 1)
 			firstTime = recentMessages[firstIdx].receivedAt
 			curTime = recentMessages[-1].receivedAt
 			curText = recentMessages[-1].args[1]
