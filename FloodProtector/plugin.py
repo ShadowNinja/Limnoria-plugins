@@ -26,25 +26,24 @@ class RateLimiter:
 	def __init__(self):
 		self.buckets = {}
 
-	def __call__(self, key, timeout, count=1):
-		now = time.time()
+	def __call__(self, key, timeout, time, count=1):
 		if key in self.buckets:
 			level, lastUpdate = self.buckets[key]
 		else:
-			level, lastUpdate = 0, now
+			level, lastUpdate = 0, time
 
-		level = self._updateLevel(level, lastUpdate, now, timeout) + count
+		level = self._updateLevel(level, lastUpdate, time, timeout) + count
 
-		self.buckets[key] = (level, now)
+		self.buckets[key] = (level, time)
 
 		return level
 
-	def _updateLevel(self, level, lastUpdate, now, timeout):
+	def _updateLevel(self, level, lastUpdate, time, timeout):
 		"""
 		Calculate what the current bucket level should be based on its last
 		level and the time that has passed since then.
 		"""
-		timeoutsPassed = (now - lastUpdate) / timeout
+		timeoutsPassed = (time - lastUpdate) / timeout
 		return max(0, level - timeoutsPassed)
 
 	def cleanup(self, timeout):
@@ -137,7 +136,7 @@ class FloodProtector(callbacks.Plugin):
 		if not msg.user.startswith("~"):
 			joinKey += (msg.user,)
 
-		if self.joinLimit(joinKey, joinFloodTimeout) > joinFloodLimit:
+		if self.joinLimit(joinKey, joinFloodTimeout, msg.time) > joinFloodLimit:
 			self.ban(irc, msg)
 
 	def getBadConnectionChannel(self, irc):
@@ -158,7 +157,7 @@ class FloodProtector(callbacks.Plugin):
 		badConnectionChannel = self.getBadConnectionChannel(irc)
 		quitKey = (irc.network, msg.host)
 
-		if self.quitLimit(quitKey, badConnectionTimeout) > badConnectionLimit:
+		if self.quitLimit(quitKey, badConnectionTimeout, msg.time) > badConnectionLimit:
 			self.banForward(irc, msg, badConnectionChannel, badConnectionBanTime)
 
 	def ban(self, irc, msg, forwardChannel=None, banLength=None):
@@ -207,7 +206,7 @@ class FloodProtector(callbacks.Plugin):
 		# Regular message flood
 		floodLimit = self.registryValue("floodLimit")
 		floodTimeout = self.registryValue("floodTimeout")
-		if self.messageLimit(userKey, floodTimeout) > floodLimit:
+		if self.messageLimit(userKey, floodTimeout, msg.time) > floodLimit:
 			self.floodPunish(irc, msg, "Message")
 
 		# Message repetition flood
@@ -227,7 +226,7 @@ class FloodProtector(callbacks.Plugin):
 		slapLimit = self.registryValue("slapLimit")
 		slapTimeout = self.registryValue("slapTimeout")
 		if ircmsgs.isAction(msg) and "slaps" in message and \
-				self.slapLimit(userKey, slapTimeout) > slapLimit:
+				self.slapLimit(userKey, slapTimeout, msg.time) > slapLimit:
 			self.floodPunish(irc, msg, "Slap")
 			return
 
@@ -236,12 +235,11 @@ class FloodProtector(callbacks.Plugin):
 		highlightTimeout = self.registryValue("highlightTimeout")
 		if channelKey in self.nickRegexes:
 			matches = self.nickRegexes[channelKey].findall(message)
-			if self.highlightLimit(userKey, highlightTimeout, len(matches)) > highlightLimit:
+			if self.highlightLimit(userKey, highlightTimeout, msg.time, len(matches)) > highlightLimit:
 				self.floodPunish(irc, msg, "Highlight")
 				return
 
 	def floodPunish(self, irc, msg, floodType):
-		now = time.time()
 		channel = msg.args[0]
 		channel_state = irc.state.channels[channel]
 		offenseKey = (irc.network, channel, msg.host)
@@ -249,7 +247,7 @@ class FloodProtector(callbacks.Plugin):
 		immunityTime = self.registryValue("immunityTime")
 
 		if offenseKey in self.punishTime and \
-				now - self.punishTime[offenseKey] < immunityTime:
+				msg.time - self.punishTime[offenseKey] < immunityTime:
 			self.log.debug("Not punishing %s, they are immune.", msg.nick)
 			return
 
@@ -278,7 +276,7 @@ class FloodProtector(callbacks.Plugin):
 		banIssued = False
 		offenseLimit = self.registryValue("offenseLimit")
 		offenseTimeout = self.registryValue("offenseTimeout")
-		if self.offenseLimit(offenseKey, offenseTimeout) > offenseLimit:
+		if self.offenseLimit(offenseKey, offenseTimeout, msg.time) > offenseLimit:
 			hostmask = irc.state.nickToHostmask(msg.nick)
 			banmaskstyle = conf.supybot.protocols.irc.banmask
 			banmask = banmaskstyle.makeBanmask(hostmask)
@@ -297,7 +295,7 @@ class FloodProtector(callbacks.Plugin):
 
 		irc.queueMsg(ircmsgs.kick(channel, msg.nick, reason))
 
-		self.punishTime[offenseKey] = now
+		self.punishTime[offenseKey] = msg.time
 
 		if not banIssued:
 			self.log.warning("Kicked %s from %s for %s flooding.",
